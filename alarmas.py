@@ -5,11 +5,11 @@ import plotly.express as px
 import os
 
 # Ruta del archivo CSV relativa
-file_path = r"\\servernas\Validaciones-Metrología\COORVSC-CALIFICACIONES\CALIFICACIONES\EQUIPOS\Secador de Lecho Fluido Glatt 600 kg N°4\calificación 2025\VSC\AlarmHistory.csv"
+#file_path = r"\\servernas\Validaciones-Metrología\COORVSC-CALIFICACIONES\CALIFICACIONES\EQUIPOS\Secador de Lecho Fluido Glatt 600 kg N°4\calificación 2025\VSC\AlarmHistory.csv"
 
 # Leer y limpiar los datos
 data = pd.read_csv(
-    file_path,
+    "AlarmHistory.csv",
     encoding='latin1',
     skiprows=5,  # Ajusta según las líneas iniciales no relevantes
     names=["Timestamp", "Tipo de Alarma", "Codigo de Alarma", "Mensaje"]
