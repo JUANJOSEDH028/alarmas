@@ -5,7 +5,7 @@ import plotly.express as px
 import os
 
 # Ruta del archivo CSV relativa
-file_path = "/mnt/data/AlarmHistory.csv" 
+file_path = "https://github.com/JUANJOSEDH028/alarmas/raw/main/AlarmHistory.csv"
 
 # Leer y limpiar los datos
 data = pd.read_csv(
