@@ -1,11 +1,13 @@
 import pandas as pd
 import sqlite3
-from dash import Dash, html, dcc, Input, Output, dash_table
+import streamlit as st
 import plotly.express as px
+import os
+
+# Ruta del archivo CSV relativa
+file_path = r"\\servernas\Validaciones-Metrología\COORVSC-CALIFICACIONES\CALIFICACIONES\EQUIPOS\Secador de Lecho Fluido Glatt 600 kg N°4\calificación 2025\VSC\AlarmHistory.csv"
 
 # Leer y limpiar los datos
-file_path = r"\\servernas\Validaciones-Metrología\COORVSC-CALIFICACIONES\CALIFICACIONES\EQUIPOS\Secador de Lecho Fluido Glatt 600 kg N°4\Calificación 2025 V01\VSC\Prueba 23\AlarmHistory.csv"
-
 data = pd.read_csv(
     file_path,
     encoding='latin1',
@@ -20,87 +22,97 @@ data.reset_index(drop=True, inplace=True)
 # Convertir Timestamp a formato datetime
 data["Timestamp"] = pd.to_datetime(data["Timestamp"])
 
-# Extraer el usuario del campo "Mensaje"
+# Extraer el usuario del campo "Mensaje" con un regex mejorado
 data["Usuario"] = data["Mensaje"].str.extract(r"- por (.+)$", expand=True)
+
+# Limpiar el mensaje principal (eliminar "Por ..." para dejar el texto limpio)
 data["Mensaje"] = data["Mensaje"].str.replace(r" - Por .+$", "", regex=True)
 
-# Conectar SQLite y realizar consultas
+# Guardar en SQLite
 conn = sqlite3.connect("AlarmHistory.db")
 data.to_sql("Alarmas", conn, if_exists="replace", index=False)
 
-# Consulta principal
+# Consulta para los usuarios con más alarmas
 query_usuarios = """
 SELECT Usuario, COUNT(*) as Frecuencia
 FROM Alarmas
-WHERE Usuario IS NOT NULL
 GROUP BY Usuario
 ORDER BY Frecuencia DESC
 """
 result_usuarios = pd.read_sql_query(query_usuarios, conn)
+
+# Consulta para el total de alarmas
 total_alarmas = len(data)
+
+# Alarmas y usuarios únicos
+alarmas_unicas = data["Mensaje"].dropna().unique()
+usuarios_unicos = data["Usuario"].dropna().unique()
+
+# Cerrar conexión SQLite
 conn.close()
 
-# Dash App
-app = Dash(__name__)
-app.title = "Dashboard de Alarmas"
+# --- Configuración del Dashboard ---
+st.set_page_config(page_title="Dashboard de Alarmas", layout="wide")
 
-# Layout personalizado con estilo oscuro
-app.layout = html.Div(style={'backgroundColor': '#121212', 'color': '#FFFFFF', 'padding': '20px'}, children=[
-    html.H1("Dashboard de Alarmas", style={'textAlign': 'center', 'color': '#4CAF50'}),
-    html.Div([
-        html.Div([
-            html.H3("Total de Alarmas", style={'color': '#FFC107'}),
-            html.H2(f"{total_alarmas}", style={'color': '#FFC107'})
-        ], style={'display': 'inline-block', 'width': '30%', 'textAlign': 'center'}),
+# --- Encabezado ---
+st.title("Dashboard de Alarmas de Sistema")
+st.markdown("## Visualización interactiva de las alarmas registradas")
 
-        html.Div([
-            html.H3("Usuario con Más Alarmas", style={'color': '#FF5722'}),
-            html.H2(f"{result_usuarios.iloc[0]['Usuario']}", style={'color': '#FF5722'})
-        ], style={'display': 'inline-block', 'width': '30%', 'textAlign': 'center'}),
-    ], style={'display': 'flex', 'justifyContent': 'space-around'}),
+# --- Métricas ---
+col1, col2, col3 = st.columns(3)
+col1.metric("Total de Alarmas", total_alarmas)
+col2.metric("Tipos de Alarmas Únicas", len(alarmas_unicas))
+col3.metric("Usuarios Únicos", len(usuarios_unicos))
 
-    html.H3("Usuarios con Más Alarmas", style={'textAlign': 'center', 'marginTop': '20px', 'color': '#00BCD4'}),
-    dcc.Graph(
-        id="bar-usuarios",
-        figure=px.bar(result_usuarios, x='Usuario', y='Frecuencia', 
-                      title='Usuarios con Más Alarmas',
-                      color_discrete_sequence=['#2196F3'])
-    ),
+# --- Tabla de Alarmas Únicas ---
+st.subheader("Alarmas Únicas")
+st.dataframe(pd.DataFrame(alarmas_unicas, columns=["Alarmas Únicas"]), use_container_width=True)
 
-    html.H3("Usuarios Únicos del Sistema (Gráfico de Pastel)", style={'marginTop': '20px', 'color': '#FF9800'}),
-    dcc.Graph(
-        id="pie-usuarios-unicos",
-        figure=px.pie(result_usuarios, names='Usuario', values='Frecuencia', 
-                      title="Distribución de Usuarios Únicos", color_discrete_sequence=px.colors.sequential.Viridis)
-    ),
+# --- Tabla de Usuarios Únicos ---
+st.subheader("Usuarios Únicos")
+st.dataframe(pd.DataFrame(usuarios_unicos, columns=["Usuarios Únicos"]), use_container_width=True)
 
-    html.H3("Filtro de Rango de Tiempo", style={'marginTop': '20px', 'color': '#FFEB3B'}),
-    dcc.DatePickerRange(
-        id='date-picker-range',
-        start_date=data['Timestamp'].min(),
-        end_date=data['Timestamp'].max(),
-        display_format='YYYY-MM-DD',
-        style={'color': '#000000'}
-    ),
-
-    html.H3("Tabla Completa de Alarmas", style={'marginTop': '20px', 'color': '#9C27B0'}),
-    dash_table.DataTable(
-        id='filtered-table',
-        columns=[{"name": i, "id": i} for i in data.columns],
-        style_table={'height': '400px', 'overflowY': 'auto', 'backgroundColor': '#1E1E1E'},
-        style_header={'backgroundColor': '#333333', 'color': 'white'},
-        style_cell={'backgroundColor': '#1E1E1E', 'color': 'white'}
-    )
-])
-
-@app.callback(
-    Output('filtered-table', 'data'),
-    Input('date-picker-range', 'start_date'),
-    Input('date-picker-range', 'end_date')
+# --- Selector de rango de fechas ---
+st.subheader("Filtrar por Rango de Fechas")
+start_date, end_date = st.date_input(
+    "Seleccione el rango de fechas:", 
+    [data["Timestamp"].min().date(), data["Timestamp"].max().date()],
+    key="date_range_selector_alarmas"
 )
-def update_table(start_date, end_date):
-    filtered_data = data[(data['Timestamp'] >= start_date) & (data['Timestamp'] <= end_date)]
-    return filtered_data.to_dict('records')
+start_date = pd.to_datetime(start_date)
+end_date = pd.to_datetime(end_date)
+
+# Filtrar los datos por rango de fechas
+filtered_data = data[(data["Timestamp"] >= start_date) & (data["Timestamp"] <= end_date)]
+
+# Mostrar los datos filtrados (todas las alarmas)
+st.subheader("Lista Completa de Alarmas Filtradas")
+st.dataframe(filtered_data, use_container_width=True)
+
+# --- Gráfico de Pastel para Usuarios con Más Alarmas ---
+st.subheader("Usuarios con Más Alarmas")
+fig_pie_usuarios = px.pie(result_usuarios, names="Usuario", values="Frecuencia", title="Usuarios con Más Alarmas")
+st.plotly_chart(fig_pie_usuarios, use_container_width=True)
+
+# --- Histograma de Alarmas por Hora ---
+st.subheader("Distribución de Alarmas por Hora del Día")
+filtered_data["Hora"] = filtered_data["Timestamp"].dt.hour
+
+fig_histogram = px.histogram(filtered_data, x="Hora", nbins=24, title="Histograma de Alarmas por Hora del Día",
+                             labels={"Hora": "Hora del Día", "count": "Cantidad de Alarmas"})
+st.plotly_chart(fig_histogram, use_container_width=True)
+
+# --- Opción de Guardar Datos ---
+st.subheader("Exportar Datos")
+
+# Botón para descargar los datos filtrados como CSV
+st.download_button(
+    label="Descargar Datos Filtrados (CSV)",
+    data=filtered_data.to_csv(index=False).encode('utf-8'),
+    file_name='datos_filtrados.csv',
+    mime='text/csv'
+)
+
 
 # Ejecutar la app
 if __name__ == '__main__':
